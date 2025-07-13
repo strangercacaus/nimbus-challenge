@@ -9,14 +9,13 @@ import os
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.models.anthropic import AnthropicModel
 from openai import AsyncOpenAI
 from supabase import Client
 from typing import List
 
 load_dotenv()
 
-llm = os.getenv('LLM_MODEL', 'gpt-4o-mini')
+llm = os.getenv('LLM_MODEL')
 model = OpenAIModel(llm)
 
 logfire.configure(send_to_logfire='if-token-present')

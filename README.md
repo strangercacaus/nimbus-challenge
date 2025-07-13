@@ -1,10 +1,10 @@
 # Cloudwalk Documentation Crawler and RAG Agent
 
-An intelligent documentation crawler and RAG (Retrieval-Augmented Generation) agent built using Pydantic AI and Supabase. The agent can crawl documentation websites, store content in a vector database, and provide intelligent answers to user questions by retrieving and analyzing relevant documentation chunks.
+An intelligent documentation crawler and RAG (Retrieval-Augmented Generation) agent built using Pydantic AI and Supabase. The agent can crawl websites, store content in a vector database, and provide intelligent answers to user questions by retrieving and analyzing relevant documentation chunks.
 
 ## Features
 
-- Documentation website crawling and chunking
+- Website crawling and chunking
 - Vector database storage with Supabase
 - Semantic search using OpenAI embeddings
 - RAG-based question answering
@@ -23,8 +23,7 @@ An intelligent documentation crawler and RAG (Retrieval-Augmented Generation) ag
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/coleam00/ottomator-agents.git
-cd ottomator-agents/crawl4AI-agent
+git clone https://github.com/strangercacaus/nimbus-challenge
 ```
 
 2. Install dependencies (recommended to use a Python virtual environment):
@@ -41,7 +40,10 @@ pip install -r requirements.txt
    OPENAI_API_KEY=your_openai_api_key
    SUPABASE_URL=your_supabase_url
    SUPABASE_SERVICE_KEY=your_supabase_service_key
-   LLM_MODEL=gpt-4o-mini  # or your preferred OpenAI model
+   SITEMAP_URL =your_sitemap_url
+   SITE_URL=your_website_url
+   LLM_MODEL= 'gpt-4o'  # or your preferred OpenAI model
+   EMBEDDING_MODEL= 'text-embedding-3-large' # or your Preferred Embedding Model
    ```
 
 ## Usage
@@ -60,7 +62,7 @@ In Supabase, do this by going to the "SQL Editor" tab and pasting in the SQL int
 To crawl and store documentation in the vector database:
 
 ```bash
-python crawl_pydantic_ai_docs.py
+python crawl_docs.py
 ```
 
 This will:
@@ -98,7 +100,7 @@ CREATE TABLE site_pages (
 
 ### Chunking Configuration
 
-You can configure chunking parameters in `crawl_pydantic_ai_docs.py`:
+You can configure chunking parameters in `crawl_docs.py`:
 ```python
 chunk_size = 5000  # Characters per chunk
 ```
