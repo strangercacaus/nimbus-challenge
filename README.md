@@ -62,7 +62,7 @@ In Supabase, do this by going to the "SQL Editor" tab and pasting in the SQL int
 To crawl and store documentation in the vector database:
 
 ```bash
-python crawl_docs.py
+python crawler.py
 ```
 
 This will:
@@ -100,7 +100,7 @@ CREATE TABLE site_pages (
 
 ### Chunking Configuration
 
-You can configure chunking parameters in `crawl_docs.py`:
+You can configure chunking parameters in `crawler.py`:
 ```python
 chunk_size = 5000  # Characters per chunk
 ```
