@@ -7,7 +7,8 @@ from xml.etree import ElementTree
 from typing import List, Dict, Any
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote, unquote
+import re
 from dotenv import load_dotenv
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
@@ -32,6 +33,51 @@ class ProcessedChunk:
     content: str
     metadata: Dict[str, Any]
     embedding: List[float]
+
+def clean_url(url: str) -> str:
+    """Clean and normalize URL to fix encoding issues."""
+    if not url:
+        return ""
+    
+    # Remove all whitespace and control characters
+    url = re.sub(r'\s+', '', url)  # Remove all whitespace
+    url = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', url)  # Remove control characters
+    
+    # Handle Unicode normalization
+    url = url.encode('utf-8', errors='ignore').decode('utf-8')
+    
+    # Ensure proper URL encoding for special characters
+    try:
+        # Parse the URL to handle encoding properly
+        parsed = urlparse(url)
+        if parsed.scheme and parsed.netloc:
+            # Reconstruct the URL with proper encoding
+            url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            if parsed.query:
+                url += f"?{parsed.query}"
+            if parsed.fragment:
+                url += f"#{parsed.fragment}"
+    except Exception:
+        pass  # If parsing fails, use the cleaned URL as-is
+    
+    return url.strip()
+
+def validate_url(url: str) -> bool:
+    """Validate URL format."""
+    if not url:
+        return False
+    
+    # Check if URL starts with valid protocols
+    valid_prefixes = ['http://', 'https://', 'file://', 'raw:']
+    if not any(url.startswith(prefix) for prefix in valid_prefixes):
+        return False
+    
+    # Additional validation
+    try:
+        parsed = urlparse(url)
+        return bool(parsed.scheme and parsed.netloc)
+    except Exception:
+        return False
 
 def chunk_text(text: str, chunk_size: int = 5000) -> List[str]:
     """Split text into chunks, respecting code blocks and paragraphs."""
@@ -196,22 +242,33 @@ async def crawl_parallel(urls: List[str], max_concurrent: int = 5):
         
         async def process_url(url: str):
             async with semaphore:
-                # Validate URL format before crawling
-                url = url.strip()  # Extra safety strip
-                if not url or not any(url.startswith(prefix) for prefix in ['http://', 'https://', 'file://', 'raw:']):
-                    print(f"Skipping invalid URL: '{url}' (length: {len(url)})")
+                # Clean and validate URL before crawling
+                original_url = url
+                url = clean_url(url)
+                
+                if not validate_url(url):
+                    print(f"❌ Skipping invalid URL:")
+                    print(f"   Original: '{original_url}' (length: {len(original_url)})")
+                    print(f"   Cleaned:  '{url}' (length: {len(url)})")
+                    print(f"   Bytes: {[hex(ord(c)) for c in original_url[:50]]}")
                     return
                 
-                result = await crawler.arun(
-                    url=url,
-                    config=crawl_config,
-                    session_id="session1"
-                )
-                if result.success:
-                    print(f"Successfully crawled: {url}")
-                    await process_and_store_document(url, result.markdown_v2.raw_markdown)
-                else:
-                    print(f"Failed: {url} - Error: {result.error_message}")
+                print(f"🔍 Crawling: {url}")
+                
+                try:
+                    result = await crawler.arun(
+                        url=url,
+                        config=crawl_config,
+                        session_id="session1"
+                    )
+                    if result.success:
+                        print(f"✅ Successfully crawled: {url}")
+                        await process_and_store_document(url, result.markdown_v2.raw_markdown)
+                    else:
+                        print(f"❌ Failed: {url}")
+                        print(f"   Error: {result.error_message}")
+                except Exception as e:
+                    print(f"❌ Exception while crawling {url}: {e}")
         
         # Process all URLs in parallel with limited concurrency
         await asyncio.gather(*[process_url(url) for url in urls])
@@ -228,33 +285,49 @@ def get_ai_docs_urls() -> List[str]:
         # Parse the XML
         root = ElementTree.fromstring(response.content)
         
-        # Extract all URLs from the sitemap and strip whitespace
+        # Extract all URLs from the sitemap and clean them
         namespace = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
-        urls = [loc.text.strip() for loc in root.findall('.//ns:loc', namespace) if loc.text]
+        raw_urls = [loc.text for loc in root.findall('.//ns:loc', namespace) if loc.text]
         
-        return urls
+        # Clean and validate URLs
+        cleaned_urls = []
+        for raw_url in raw_urls:
+            cleaned_url = clean_url(raw_url)
+            if validate_url(cleaned_url):
+                cleaned_urls.append(cleaned_url)
+            else:
+                print(f"⚠️  Skipped invalid URL from sitemap:")
+                print(f"   Raw: '{raw_url}'")
+                print(f"   Cleaned: '{cleaned_url}'")
+        
+        print(f"📊 Sitemap processing: {len(raw_urls)} raw URLs → {len(cleaned_urls)} valid URLs")
+        return cleaned_urls
     except Exception as e:
-        print(f"Error fetching sitemap: {e}")
+        print(f"❌ Error fetching sitemap: {e}")
         return []
 
 async def main():
-    # Get URLs from Pydantic AI docs
+    # Get URLs from docs
+    print("🔄 Fetching URLs from sitemap...")
     urls = get_ai_docs_urls()
     if not urls:
-        print("No URLs found to crawl")
+        print("❌ No URLs found to crawl")
         return
     
-    print(f"Found {len(urls)} URLs to crawl")
+    print(f"🎯 Found {len(urls)} valid URLs to crawl")
     
     # Show first few URLs for debugging
     if urls:
-        print("Sample URLs:")
-        for i, url in enumerate(urls[:3]):
-            print(f"  {i+1}. '{url}' (length: {len(url)})")
-        if len(urls) > 3:
-            print(f"  ... and {len(urls) - 3} more")
+        print("📋 Sample URLs:")
+        for i, url in enumerate(urls[:5]):  # Show 5 instead of 3
+            print(f"   {i+1}. {url}")
+            print(f"      Length: {len(url)} characters")
+        if len(urls) > 5:
+            print(f"   ... and {len(urls) - 5} more URLs")
     
+    print(f"\n🚀 Starting parallel crawl...")
     await crawl_parallel(urls)
+    print(f"✅ Crawling complete!")
 
 if __name__ == "__main__":
     asyncio.run(main())
