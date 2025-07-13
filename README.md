@@ -1,46 +1,130 @@
-# What is the Live Agent Studio?
+# Pydantic AI: Documentation Crawler and RAG Agent
 
-The [Live Agent Studio](https://studio.ottomator.ai) is a community-driven platform developed by [oTTomator](https://ottomator.ai) for you to explore cutting-edge AI agents and learn how to implement them for yourself or your business! All agents on this platform are open source and, over time, will cover a very large variety of use cases.
+An intelligent documentation crawler and RAG (Retrieval-Augmented Generation) agent built using Pydantic AI and Supabase. The agent can crawl documentation websites, store content in a vector database, and provide intelligent answers to user questions by retrieving and analyzing relevant documentation chunks.
 
-The goal with the studio is to build an educational platform for you to learn how to do incredible things with AI, while still providing practical value so that you’ll want to use the agents just for the sake of what they can do for you!
+## Features
 
-This platform is still in beta – expect longer response times under load, a rapidly growing agent library over the coming months, and a lot more content on this platform soon on Cole Medin’s YouTube channel!
+- Documentation website crawling and chunking
+- Vector database storage with Supabase
+- Semantic search using OpenAI embeddings
+- RAG-based question answering
+- Support for code block preservation
+- Streamlit UI for interactive querying
+- Available as both API endpoint and web interface
 
-# What is this Repository for?
+## Prerequisites
 
-This repository contains the source code/workflow JSON for all the agents on the Live Agent Studio! Every agent being added to the platform is currently be open sourced here so we can not only create a curated collection of cutting-edge agents together as a community, but also learn from one another!
+- Python 3.11+
+- Supabase account and database
+- OpenAI API key
+- Streamlit (for web interface)
 
-## Tokens
+## Installation
 
-Most agents on the Live Agent Studio cost tokens to use, which are purchasable on the platform. However, when you first sign in you are given some tokens to start so you can use the agents free of charge! The biggest reason agents cost tokens is that we pay for the LLM usage since we host all the agents developed by you and the rest of the community!
+1. Clone the repository:
+```bash
+git clone https://github.com/coleam00/ottomator-agents.git
+cd ottomator-agents/crawl4AI-agent
+```
 
-[Purchase Tokens](https://studio.ottomator.ai/pricing)
+2. Install dependencies (recommended to use a Python virtual environment):
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-## Future Plans
+3. Set up environment variables:
+   - Rename `.env.example` to `.env`
+   - Edit `.env` with your API keys and preferences:
+   ```env
+   OPENAI_API_KEY=your_openai_api_key
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_SERVICE_KEY=your_supabase_service_key
+   LLM_MODEL=gpt-4o-mini  # or your preferred OpenAI model
+   ```
 
-As the Live Agent Studio develops, it will become the go-to place to stay on top of what is possible with AI agents! Anytime there is a new AI technology, groundbreaking agent research, or a new tool/library to build agents with, it’ll be featured through agents on the platform. It’s a tall order, but we have big plans for the oTTomator community, and we’re confident we can grow to accomplish this!
+## Usage
 
-## FAQ
+### Database Setup
 
-### I want to build an agent to showcase in the Live Agent Studio! How do I do that?
+Execute the SQL commands in `site_pages.sql` to:
+1. Create the necessary tables
+2. Enable vector similarity search
+3. Set up Row Level Security policies
 
-Head on over here to learn how to build an agent for the platform:
+In Supabase, do this by going to the "SQL Editor" tab and pasting in the SQL into the editor there. Then click "Run".
 
-[Developer Guide](https://studio.ottomator.ai/guide)
+### Crawl Documentation
 
-Also check out [the sample n8n agent](~sample-n8n-agent~) for a starting point of building an n8n agent for the Live Agent Studio, and [the sample Python agent](~sample-python-agent~) for Python.
+To crawl and store documentation in the vector database:
 
-### How many tokens does it cost to use an agent?
+```bash
+python crawl_pydantic_ai_docs.py
+```
 
-Each agent will charge tokens per prompt. The number of tokens depends on the agent, as some agents use larger LLMs, some call LLMs multiple times, and some use paid APIs.
+This will:
+1. Fetch URLs from the documentation sitemap
+2. Crawl each page and split into chunks
+3. Generate embeddings and store in Supabase
 
-### Where can I go to talk about all these agents and get help implementing them myself?
+### Streamlit Web Interface
 
-Head on over to our Think Tank community and feel free to make a post!
+For an interactive web interface to query the documentation:
 
-[Think Tank Community](https://thinktank.ottomator.ai)
+```bash
+streamlit run streamlit_ui.py
+```
 
----
+The interface will be available at `http://localhost:8501`
 
-&copy; 2024 Live Agent Studio. All rights reserved.  
-Created by oTTomator
+## Configuration
+
+### Database Schema
+
+The Supabase database uses the following schema:
+```sql
+CREATE TABLE site_pages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    url TEXT,
+    chunk_number INTEGER,
+    title TEXT,
+    summary TEXT,
+    content TEXT,
+    metadata JSONB,
+    embedding VECTOR(1536)
+);
+```
+
+### Chunking Configuration
+
+You can configure chunking parameters in `crawl_pydantic_ai_docs.py`:
+```python
+chunk_size = 5000  # Characters per chunk
+```
+
+The chunker intelligently preserves:
+- Code blocks
+- Paragraph boundaries
+- Sentence boundaries
+
+## Project Structure
+
+- `crawl_pydantic_ai_docs.py`: Documentation crawler and processor
+- `pydantic_ai_expert.py`: RAG agent implementation
+- `streamlit_ui.py`: Web interface
+- `site_pages.sql`: Database setup commands
+- `requirements.txt`: Project dependencies
+
+## Live Agent Studio Version
+
+If you're interested in seeing how this agent is implemented in the Live Agent Studio, check out the `studio-integration-api` directory. This contains the API endpoint for the production version of the agent that runs on the platform.
+
+## Error Handling
+
+The system includes robust error handling for:
+- Network failures during crawling
+- API rate limits
+- Database connection issues
+- Embedding generation errors
+- Invalid URLs or content
