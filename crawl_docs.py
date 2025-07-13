@@ -219,7 +219,7 @@ async def crawl_parallel(urls: List[str], max_concurrent: int = 5):
         await crawler.close()
 
 def get_ai_docs_urls() -> List[str]:
-    """Get URLs from Cloudwalk AI docs sitemap."""
+    """Get URLs from docs sitemap."""
     sitemap_url = os.getenv("SITEMAP_URL")
     try:
         response = requests.get(sitemap_url)
@@ -245,6 +245,15 @@ async def main():
         return
     
     print(f"Found {len(urls)} URLs to crawl")
+    
+    # Show first few URLs for debugging
+    if urls:
+        print("Sample URLs:")
+        for i, url in enumerate(urls[:3]):
+            print(f"  {i+1}. '{url}' (length: {len(url)})")
+        if len(urls) > 3:
+            print(f"  ... and {len(urls) - 3} more")
+    
     await crawl_parallel(urls)
 
 if __name__ == "__main__":

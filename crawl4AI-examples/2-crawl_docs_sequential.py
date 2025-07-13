@@ -1,3 +1,4 @@
+import os
 import asyncio
 from typing import List
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
@@ -43,12 +44,12 @@ async def crawl_sequential(urls: List[str]):
 def get_pydantic_ai_docs_urls():
     """
     Fetches all URLs from the Pydantic AI documentation.
-    Uses the sitemap (https://ai.pydantic.dev/sitemap.xml) to get these URLs.
+    Uses the sitemap configured in the .env file to get these URLs.
     
     Returns:
         List[str]: List of URLs
     """            
-    sitemap_url = "https://ai.pydantic.dev/sitemap.xml"
+    sitemap_url = os.getenv("SITEMAP_URL")
     try:
         response = requests.get(sitemap_url)
         response.raise_for_status()
