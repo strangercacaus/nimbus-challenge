@@ -26,7 +26,7 @@ class CloudwalkDeps:
     openai_client: AsyncOpenAI
 
 system_prompt = """
-You are CloudWalkBot, an expert virtual assistant specializing exclusively in CloudWalk — its history, mission, brand values, and products (e.g. InfinitePay).  
+You are CloudWalk Ai Expert, an expert virtual assistant specializing exclusively in CloudWalk — its history, mission, brand values, and products (e.g. InfinitePay, Stratus and Jim).  
 
 Your behavior and workflow must follow these rules:
 
@@ -56,7 +56,7 @@ Your behavior and workflow must follow these rules:
 Now await the user’s first question.  
 """
 
-cloudwalk_ai_expert = Agent(
+cloudwalk_expert = Agent(
     model,
     system_prompt=system_prompt,
     deps_type=CloudwalkDeps,
@@ -75,7 +75,7 @@ async def get_embedding(text: str, openai_client: AsyncOpenAI) -> List[float]:
         print(f"Error getting embedding: {e}")
         return [0] * 3072  # Return zero vector on error
 
-@cloudwalk_ai_expert.tool
+@cloudwalk_expert.tool
 async def retrieve_relevant_documentation(ctx: RunContext[CloudwalkDeps], user_query: str) -> str:
     """
     Retrieve relevant documentation chunks based on the query with RAG.
@@ -124,7 +124,7 @@ async def retrieve_relevant_documentation(ctx: RunContext[CloudwalkDeps], user_q
         print(f"Error retrieving documentation: {e}")
         return f"Error retrieving documentation: {str(e)}"
 
-@cloudwalk_ai_expert.tool
+@cloudwalk_expert.tool
 async def list_documentation_pages(ctx: RunContext[CloudwalkDeps]) -> List[str]:
     """
     Retrieve a list of all available Cloudwalk website documentation pages.
@@ -150,7 +150,7 @@ async def list_documentation_pages(ctx: RunContext[CloudwalkDeps]) -> List[str]:
         print(f"Error retrieving documentation pages: {e}")
         return []
 
-@cloudwalk_ai_expert.tool
+@cloudwalk_expert.tool
 async def get_page_content(ctx: RunContext[CloudwalkDeps], url: str) -> str:
     """
     Retrieve the full content of a specific documentation page by combining all its chunks.

@@ -126,3 +126,31 @@ The system includes robust error handling for:
 - Database connection issues
 - Embedding generation errors
 - Invalid URLs or content
+
+## Preview
+
+Here are some screenshots of the CloudWalk AI Expert in action:
+
+### Interface Screenshots
+
+![Screenshot 1](https://raw.githubusercontent.com/strangercacaus/nimbus-challenge/main/assets/Screenshot%202025-07-13%20at%2019.08.27.png)
+*CloudWalk Expert interface showing the main chat with an english resposne*
+
+![Screenshot 2](https://raw.githubusercontent.com/strangercacaus/nimbus-challenge/main/assets/Screenshot%202025-07-13%20at%2019.08.37.png)
+*AI agent responding to queries about CloudWalk's Products*
+
+![Screenshot 3](https://raw.githubusercontent.com/strangercacaus/nimbus-challenge/main/assets/Screenshot%202025-07-13%20at%2019.08.43.png)
+*Detailed conversation showing Multi-Language support for RAG retrieval in action*
+
+![Screenshot 4](https://raw.githubusercontent.com/strangercacaus/nimbus-challenge/main/assets/Screenshot%202025-07-13%20at%2019.10.45.png)
+*Example of comprehensive answers with source citations*
+
+![Screenshot 5](https://raw.githubusercontent.com/strangercacaus/nimbus-challenge/main/assets/Screenshot%202025-07-13%20at%2019.10.51.png)
+*CloudWalk Expert providing the user with code snippets for*
+
+The interface provides an intuitive way to interact with the CloudWalk AI Expert, featuring:
+- Clean, modern design with dark theme support
+- Real-time streaming responses
+- Source citations for transparency
+- Interactive chat interface
+- Proper handling of markdown formatting and code blocks
