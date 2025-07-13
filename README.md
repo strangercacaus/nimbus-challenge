@@ -146,7 +146,7 @@ Here are some screenshots of the CloudWalk AI Expert in action:
 *Example of comprehensive answers with source citations*
 
 ![Screenshot 5](https://raw.githubusercontent.com/strangercacaus/nimbus-challenge/main/assets/Screenshot%202025-07-13%20at%2019.10.51.png)
-*CloudWalk Expert providing the user with code snippets for*
+*CloudWalk Expert providing the user with code snippets for Stratus Smart Contract Implemmentation*
 
 The interface provides an intuitive way to interact with the CloudWalk AI Expert, featuring:
 - Clean, modern design with dark theme support
