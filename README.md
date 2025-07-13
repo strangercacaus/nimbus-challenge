@@ -62,7 +62,7 @@ In Supabase, do this by going to the "SQL Editor" tab and pasting in the SQL int
 To crawl and store documentation in the vector database:
 
 ```bash
-python crawl_docs.py
+python crawler.py
 ```
 
 This will:
@@ -100,7 +100,7 @@ CREATE TABLE site_pages (
 
 ### Chunking Configuration
 
-You can configure chunking parameters in `crawl_docs.py`:
+You can configure chunking parameters in `crawler.py`:
 ```python
 chunk_size = 5000  # Characters per chunk
 ```
@@ -146,7 +146,7 @@ Here are some screenshots of the CloudWalk AI Expert in action:
 *Example of comprehensive answers with source citations*
 
 ![Screenshot 5](https://raw.githubusercontent.com/strangercacaus/nimbus-challenge/main/assets/Screenshot%202025-07-13%20at%2019.10.51.png)
-*CloudWalk Expert providing the user with code snippets for*
+*CloudWalk Expert providing the user with code snippets for Stratus Smart Contract Implemmentation*
 
 The interface provides an intuitive way to interact with the CloudWalk AI Expert, featuring:
 - Clean, modern design with dark theme support
