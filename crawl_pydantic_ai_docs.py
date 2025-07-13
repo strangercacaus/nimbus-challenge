@@ -196,6 +196,12 @@ async def crawl_parallel(urls: List[str], max_concurrent: int = 5):
         
         async def process_url(url: str):
             async with semaphore:
+                # Validate URL format before crawling
+                url = url.strip()  # Extra safety strip
+                if not url or not any(url.startswith(prefix) for prefix in ['http://', 'https://', 'file://', 'raw:']):
+                    print(f"Skipping invalid URL: '{url}' (length: {len(url)})")
+                    return
+                
                 result = await crawler.arun(
                     url=url,
                     config=crawl_config,
@@ -212,8 +218,8 @@ async def crawl_parallel(urls: List[str], max_concurrent: int = 5):
     finally:
         await crawler.close()
 
-def get_pydantic_ai_docs_urls() -> List[str]:
-    """Get URLs from Pydantic AI docs sitemap."""
+def get_ai_docs_urls() -> List[str]:
+    """Get URLs from Cloudwalk AI docs sitemap."""
     sitemap_url = os.getenv("SITEMAP_URL")
     try:
         response = requests.get(sitemap_url)
@@ -222,9 +228,9 @@ def get_pydantic_ai_docs_urls() -> List[str]:
         # Parse the XML
         root = ElementTree.fromstring(response.content)
         
-        # Extract all URLs from the sitemap
+        # Extract all URLs from the sitemap and strip whitespace
         namespace = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
-        urls = [loc.text for loc in root.findall('.//ns:loc', namespace)]
+        urls = [loc.text.strip() for loc in root.findall('.//ns:loc', namespace) if loc.text]
         
         return urls
     except Exception as e:
@@ -233,7 +239,7 @@ def get_pydantic_ai_docs_urls() -> List[str]:
 
 async def main():
     # Get URLs from Pydantic AI docs
-    urls = get_pydantic_ai_docs_urls()
+    urls = get_ai_docs_urls()
     if not urls:
         print("No URLs found to crawl")
         return
