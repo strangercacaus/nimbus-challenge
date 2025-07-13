@@ -3,13 +3,16 @@ import sys
 import json
 import asyncio
 import requests
+import time
+import random
 from xml.etree import ElementTree
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import urlparse, quote, unquote
 import re
 from dotenv import load_dotenv
+from functools import wraps
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from openai import AsyncOpenAI
@@ -17,12 +20,93 @@ from supabase import create_client, Client
 
 load_dotenv()
 
-# Initialize OpenAI and Supabase clients
+# Configuration for retry logic and rate limiting
+OPENAI_MAX_RETRIES = int(os.getenv("OPENAI_MAX_RETRIES", "5"))
+OPENAI_BASE_DELAY = float(os.getenv("OPENAI_BASE_DELAY", "1.0"))
+SUPABASE_MAX_RETRIES = int(os.getenv("SUPABASE_MAX_RETRIES", "3"))
+SUPABASE_BASE_DELAY = float(os.getenv("SUPABASE_BASE_DELAY", "2.0"))
+MAX_CONCURRENT_CHUNKS = int(os.getenv("MAX_CONCURRENT_CHUNKS", "3"))
+CRAWL_DELAY_SECONDS = float(os.getenv("CRAWL_DELAY_SECONDS", "0.5"))
+
+def async_retry(max_retries: int = 5, base_delay: float = 5.0, backoff_factor: float = 2.0):
+    """
+    Async retry decorator with exponential backoff for handling rate limits and timeouts.
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Base delay in seconds for first retry
+        backoff_factor: Multiplier for delay on each retry
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    
+                    # Check if this is a retryable error
+                    error_str = str(e).lower()
+                    is_rate_limit = any(keyword in error_str for keyword in [
+                        'rate limit', 'rate_limit', 'too many requests', 
+                        'quota exceeded', 'rate exceeded', '429'
+                    ])
+                    is_timeout = any(keyword in error_str for keyword in [
+                        'timeout', 'timed out', 'connection timeout',
+                        'read timeout', 'request timeout'
+                    ])
+                    is_server_error = any(keyword in error_str for keyword in [
+                        'internal server error', '500', '502', '503', '504',
+                        'bad gateway', 'service unavailable', 'gateway timeout'
+                    ])
+                    is_connection_error = any(keyword in error_str for keyword in [
+                        'connection error', 'connection refused', 'connection reset',
+                        'connection timeout', 'network error'
+                    ])
+                    
+                    # Only retry on specific error types
+                    if not (is_rate_limit or is_timeout or is_server_error or is_connection_error):
+                        print(f"❌ Non-retryable error in {func.__name__}: {e}")
+                        raise e
+                    
+                    if attempt < max_retries:
+                        # Calculate delay with exponential backoff and jitter
+                        delay = base_delay * (backoff_factor ** attempt)
+                        jitter = random.uniform(0.1, 0.5) * delay
+                        total_delay = delay + jitter
+                        
+                        error_type = "rate limit" if is_rate_limit else "timeout/connection" if (is_timeout or is_connection_error) else "server error"
+                        print(f"⏳ {error_type.capitalize()} in {func.__name__} (attempt {attempt + 1}/{max_retries + 1}). Retrying in {total_delay:.2f}s...")
+                        
+                        await asyncio.sleep(total_delay)
+                    else:
+                        print(f"❌ Max retries ({max_retries}) exceeded for {func.__name__}: {e}")
+                        raise last_exception
+            
+            raise last_exception
+        return wrapper
+    return decorator
+
+# Initialize OpenAI client
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-supabase: Client = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_SERVICE_KEY")
-)
+
+# Initialize Supabase client with error handling
+supabase = None
+try:
+    supabase: Client = create_client(
+        os.getenv("SUPABASE_URL"),
+        os.getenv("SUPABASE_SERVICE_KEY")
+    )
+    print("✅ Supabase connection successful")
+except Exception as e:
+    print(f"⚠️  Supabase connection failed: {e}")
+    print("   Continuing without database storage...")
+    print("   Content will be processed but not stored.")
+    print("   Please check your SUPABASE_URL and SUPABASE_SERVICE_KEY in .env file")
+    supabase = None
 
 @dataclass
 class ProcessedChunk:
@@ -124,6 +208,7 @@ def chunk_text(text: str, chunk_size: int = 5000) -> List[str]:
 
     return chunks
 
+@async_retry(max_retries=OPENAI_MAX_RETRIES, base_delay=OPENAI_BASE_DELAY, backoff_factor=2.0)
 async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
     """Extract title and summary using GPT-4."""
     system_prompt = """You are an AI that extracts titles and summaries from documentation chunks.
@@ -146,17 +231,18 @@ async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
         print(f"Error getting title and summary: {e}")
         return {"title": "Error processing title", "summary": "Error processing summary"}
 
+@async_retry(max_retries=OPENAI_MAX_RETRIES, base_delay=OPENAI_BASE_DELAY, backoff_factor=2.0)
 async def get_embedding(text: str) -> List[float]:
     """Get embedding vector from OpenAI."""
     try:
         response = await openai_client.embeddings.create(
-            model="text-embedding-3-small",
+            model = os.getenv("EMBEDDING_MODEL"),
             input=text
         )
         return response.data[0].embedding
     except Exception as e:
         print(f"Error getting embedding: {e}")
-        return [0] * 1536  # Return zero vector on error
+        return [0] * 3072  # Return zero vector on error
 
 async def process_chunk(chunk: str, chunk_number: int, url: str) -> ProcessedChunk:
     """Process a single chunk of text."""
@@ -168,7 +254,7 @@ async def process_chunk(chunk: str, chunk_number: int, url: str) -> ProcessedChu
     
     # Create metadata
     metadata = {
-        "source": "pydantic_ai_docs",
+        "source": os.getenv("SITE_URL").split(".")[1],
         "chunk_size": len(chunk),
         "crawled_at": datetime.now(timezone.utc).isoformat(),
         "url_path": urlparse(url).path
@@ -184,8 +270,13 @@ async def process_chunk(chunk: str, chunk_number: int, url: str) -> ProcessedChu
         embedding=embedding
     )
 
+@async_retry(max_retries=SUPABASE_MAX_RETRIES, base_delay=SUPABASE_BASE_DELAY, backoff_factor=2.0)
 async def insert_chunk(chunk: ProcessedChunk):
     """Insert a processed chunk into Supabase."""
+    if supabase is None:
+        print(f"⚠️  Skipping insertion for chunk {chunk.chunk_number} for {chunk.url} due to Supabase connection issue.")
+        return None
+
     try:
         data = {
             "url": chunk.url,
@@ -202,44 +293,82 @@ async def insert_chunk(chunk: ProcessedChunk):
         return result
     except Exception as e:
         print(f"Error inserting chunk: {e}")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Supabase URL: {os.getenv('SUPABASE_URL')}")
+        if "nodename nor servname provided" in str(e):
+            print("❌ DNS resolution failed - check your SUPABASE_URL in .env file")
+            print("   Visit https://supabase.com/dashboard to verify your project URL")
         return None
 
-async def process_and_store_document(url: str, markdown: str):
+async def process_and_store_document(url: str, markdown: str, metadata: Dict[str, Any]):
     """Process a document and store its chunks in parallel."""
+    if supabase is None:
+        print(f"⚠️  Skipping document processing for {url} due to Supabase connection issue.")
+        return
+    
     # Split into chunks
-    chunks = chunk_text(markdown)
+    chunks = chunk_text(markdown, chunk_size=3000)
     
-    # Process chunks in parallel
-    tasks = [
-        process_chunk(chunk, i, url) 
-        for i, chunk in enumerate(chunks)
-    ]
-    processed_chunks = await asyncio.gather(*tasks)
+    # Process chunks with controlled concurrency to avoid rate limits
+    # Each chunk makes 2 OpenAI API calls (title/summary + embedding)
+    max_concurrent_chunks = MAX_CONCURRENT_CHUNKS  # Limit to avoid rate limits
+    semaphore = asyncio.Semaphore(max_concurrent_chunks)
     
-    # Store chunks in parallel
-    insert_tasks = [
-        insert_chunk(chunk) 
-        for chunk in processed_chunks
-    ]
-    await asyncio.gather(*insert_tasks)
+    async def process_chunk_with_limit(chunk: str, chunk_number: int):
+        async with semaphore:
+            return await process_chunk(chunk, chunk_number, url)
+    
+    # Process chunks with rate limiting
+    tasks = []
+    for i, chunk in enumerate(chunks):
+        task = process_chunk_with_limit(chunk, i+1)
+        tasks.append(task)
+    
+    # Wait for all chunks to be processed
+    processed_chunks = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Insert all chunks in parallel
+    insertion_tasks = []
+    for chunk in processed_chunks:
+        if isinstance(chunk, ProcessedChunk):
+            insertion_tasks.append(insert_chunk(chunk))
+    
+    if insertion_tasks:
+        await asyncio.gather(*insertion_tasks, return_exceptions=True)
+        print(f"📝 Processed and stored {len(insertion_tasks)} chunks for {url}")
+    else:
+        print(f"⚠️  No chunks were successfully processed for {url}")
 
 async def crawl_parallel(urls: List[str], max_concurrent: int = 5):
-    """Crawl multiple URLs in parallel with a concurrency limit."""
+    """Crawl multiple URLs in parallel with semaphore control."""
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    # Browser configuration for crawl4ai
     browser_config = BrowserConfig(
+        browser_type="chromium",
         headless=True,
-        verbose=False,
-        extra_args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"],
+        verbose=False
     )
-    crawl_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
-
-    # Create the crawler instance
+    
+    # Crawl configuration
+    crawl_config = CrawlerRunConfig(
+        word_count_threshold=200,
+        css_selector=None,
+        screenshot=False,
+        user_agent="Mozilla/5.0 (compatible; RAG-AI-Agent/1.0)",
+        verbose=False,
+        delay_before_return_html=2.0,
+        remove_overlay_elements=True,
+        simulate_user=True,
+        override_navigator=True,
+        magic=True
+    )
+    
+    # Create the crawler (opens the browser)
     crawler = AsyncWebCrawler(config=browser_config)
     await crawler.start()
-
+    
     try:
-        # Create a semaphore to limit concurrency
-        semaphore = asyncio.Semaphore(max_concurrent)
-        
         async def process_url(url: str):
             async with semaphore:
                 # Clean and validate URL before crawling
@@ -263,16 +392,23 @@ async def crawl_parallel(urls: List[str], max_concurrent: int = 5):
                     )
                     if result.success:
                         print(f"✅ Successfully crawled: {url}")
-                        await process_and_store_document(url, result.markdown_v2.raw_markdown)
+                        await process_and_store_document(url, result.markdown.raw_markdown, result.metadata)
+                        
+                        # Add delay after processing to be respectful of rate limits
+                        if CRAWL_DELAY_SECONDS > 0:
+                            await asyncio.sleep(CRAWL_DELAY_SECONDS)
                     else:
-                        print(f"❌ Failed: {url}")
+                        print(f"❌ Failed to crawl: {url}")
                         print(f"   Error: {result.error_message}")
                 except Exception as e:
-                    print(f"❌ Exception while crawling {url}: {e}")
+                    print(f"❌ Exception crawling {url}: {e}")
         
-        # Process all URLs in parallel with limited concurrency
-        await asyncio.gather(*[process_url(url) for url in urls])
+        # Process all URLs
+        tasks = [process_url(url) for url in urls]
+        await asyncio.gather(*tasks, return_exceptions=True)
+    
     finally:
+        # After all URLs are done, close the crawler (and the browser)
         await crawler.close()
 
 def get_ai_docs_urls() -> List[str]:

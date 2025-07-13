@@ -1,4 +1,4 @@
-# Pydantic AI: Documentation Crawler and RAG Agent
+# Cloudwalk Documentation Crawler and RAG Agent
 
 An intelligent documentation crawler and RAG (Retrieval-Augmented Generation) agent built using Pydantic AI and Supabase. The agent can crawl documentation websites, store content in a vector database, and provide intelligent answers to user questions by retrieving and analyzing relevant documentation chunks.
 
@@ -92,7 +92,7 @@ CREATE TABLE site_pages (
     summary TEXT,
     content TEXT,
     metadata JSONB,
-    embedding VECTOR(1536)
+    embedding VECTOR(3072)
 );
 ```
 
@@ -110,15 +110,11 @@ The chunker intelligently preserves:
 
 ## Project Structure
 
-- `crawl_pydantic_ai_docs.py`: Documentation crawler and processor
-- `pydantic_ai_expert.py`: RAG agent implementation
+- `crawl_docs.py`: Documentation crawler and processor
+- `cloudwalk_ai_expert.py`: RAG agent implementation
 - `streamlit_ui.py`: Web interface
 - `site_pages.sql`: Database setup commands
 - `requirements.txt`: Project dependencies
-
-## Live Agent Studio Version
-
-If you're interested in seeing how this agent is implemented in the Live Agent Studio, check out the `studio-integration-api` directory. This contains the API endpoint for the production version of the agent that runs on the platform.
 
 ## Error Handling
 

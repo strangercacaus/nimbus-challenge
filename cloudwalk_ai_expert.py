@@ -9,6 +9,7 @@ import os
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.anthropic import AnthropicModel
 from openai import AsyncOpenAI
 from supabase import Client
 from typing import List
@@ -21,28 +22,45 @@ model = OpenAIModel(llm)
 logfire.configure(send_to_logfire='if-token-present')
 
 @dataclass
-class PydanticAIDeps:
+class CloudwalkDeps:
     supabase: Client
     openai_client: AsyncOpenAI
 
 system_prompt = """
-You are an expert at Pydantic AI - a Python AI agent framework that you have access to all the documentation to,
-including examples, an API reference, and other resources to help you build Pydantic AI agents.
+You are CloudWalkBot, an expert virtual assistant specializing exclusively in CloudWalk — its history, mission, brand values, and products (e.g. InfinitePay).  
 
-Your only job is to assist with this and you don't answer other questions besides describing what you are able to do.
+Your behavior and workflow must follow these rules:
 
-Don't ask the user before taking an action, just do it. Always make sure you look at the documentation with the provided tools before answering the user's question unless you have already.
+1. Retrieval‑Augmented Generation (RAG) over preloaded text chunks  
+• At session start, list the “document chunks” you have available (e.g. Company Overview, InfinitePay Features, Pricing, Security, etc.).  
+• For every user query, first retrieve the most relevant chunk(s) from the provided text corpus before crafting your answer.  
+• Quote or reference the chunk titles or IDs you used when you generate your response.
 
-When you first look at the documentation, always start with RAG.
-Then also always check the list of available documentation pages and retrieve the content of page(s) if it'll help.
+2. Scope  
+• Only answer questions about CloudWalk itself (company info, mission, values) and its products, notably InfinitePay.  
+• If asked something outside that scope, politely state: “I’m here to help only with CloudWalk topics.”
 
-Always let the user know when you didn't find the answer in the documentation or the right URL - be honest.
+3. Honesty and Coverage  
+• If none of the text chunks addresses the user’s question, respond:  
+  “I couldn’t locate that information in the provided CloudWalk materials.”  
+• Offer to note their question for future source updates.
+
+4. Proactiveness  
+• Do not ask the user for permission before taking an action; automatically retrieve and inspect the chunks.  
+• If you detect missing context or need more detail to answer, explain which chunk or area is missing.
+
+5. Tone and Format  
+• Keep responses clear, concise, and conversational.  
+• Use Markdown headings, bullet points, or tables where it improves readability.  
+• Include chunk citations (e.g. “(Source: InfinitePay Features chunk)”) so the user can see where each answer came from.
+
+Now await the user’s first question.  
 """
 
-pydantic_ai_expert = Agent(
+cloudwalk_ai_expert = Agent(
     model,
     system_prompt=system_prompt,
-    deps_type=PydanticAIDeps,
+    deps_type=CloudwalkDeps,
     retries=2
 )
 
@@ -50,16 +68,16 @@ async def get_embedding(text: str, openai_client: AsyncOpenAI) -> List[float]:
     """Get embedding vector from OpenAI."""
     try:
         response = await openai_client.embeddings.create(
-            model="text-embedding-3-small",
+            model="text-embedding-3-large",
             input=text
         )
         return response.data[0].embedding
     except Exception as e:
         print(f"Error getting embedding: {e}")
-        return [0] * 1536  # Return zero vector on error
+        return [0] * 3072  # Return zero vector on error
 
-@pydantic_ai_expert.tool
-async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_query: str) -> str:
+@cloudwalk_ai_expert.tool
+async def retrieve_relevant_documentation(ctx: RunContext[CloudwalkDeps], user_query: str) -> str:
     """
     Retrieve relevant documentation chunks based on the query with RAG.
     
@@ -80,7 +98,7 @@ async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_
             {
                 'query_embedding': query_embedding,
                 'match_count': 5,
-                'filter': {'source': 'pydantic_ai_docs'}
+                'filter': {'source': 'cloudwalk'}
             }
         ).execute()
         
@@ -94,6 +112,9 @@ async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_
 # {doc['title']}
 
 {doc['content']}
+
+**Source**: {doc['url']}
+**Relevance Score**: {doc.get('similarity', 'N/A'):.4f}
 """
             formatted_chunks.append(chunk_text)
             
@@ -104,19 +125,19 @@ async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_
         print(f"Error retrieving documentation: {e}")
         return f"Error retrieving documentation: {str(e)}"
 
-@pydantic_ai_expert.tool
-async def list_documentation_pages(ctx: RunContext[PydanticAIDeps]) -> List[str]:
+@cloudwalk_ai_expert.tool
+async def list_documentation_pages(ctx: RunContext[CloudwalkDeps]) -> List[str]:
     """
-    Retrieve a list of all available Pydantic AI documentation pages.
+    Retrieve a list of all available Cloudwalk website documentation pages.
     
     Returns:
         List[str]: List of unique URLs for all documentation pages
     """
     try:
-        # Query Supabase for unique URLs where source is pydantic_ai_docs
+        # Query Supabase for unique URLs where source is cloudwalk
         result = ctx.deps.supabase.from_('site_pages') \
             .select('url') \
-            .eq('metadata->>source', 'pydantic_ai_docs') \
+            .eq('metadata->>source', 'cloudwalk') \
             .execute()
         
         if not result.data:
@@ -130,8 +151,8 @@ async def list_documentation_pages(ctx: RunContext[PydanticAIDeps]) -> List[str]
         print(f"Error retrieving documentation pages: {e}")
         return []
 
-@pydantic_ai_expert.tool
-async def get_page_content(ctx: RunContext[PydanticAIDeps], url: str) -> str:
+@cloudwalk_ai_expert.tool
+async def get_page_content(ctx: RunContext[CloudwalkDeps], url: str) -> str:
     """
     Retrieve the full content of a specific documentation page by combining all its chunks.
     
@@ -147,7 +168,7 @@ async def get_page_content(ctx: RunContext[PydanticAIDeps], url: str) -> str:
         result = ctx.deps.supabase.from_('site_pages') \
             .select('title, content, chunk_number') \
             .eq('url', url) \
-            .eq('metadata->>source', 'pydantic_ai_docs') \
+            .eq('metadata->>source', 'cloudwalk') \
             .order('chunk_number') \
             .execute()
         
